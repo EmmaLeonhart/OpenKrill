@@ -1,18 +1,24 @@
 # krill
 
-**krill** is a Kubernetes-based deployment for running multiple small [OpenClaw](https://github.com/openclaw/openclaw) agent instances ("krill") in parallel, each working on a different project. Krill pods share a central API server and can carry persistent context between sessions via `.claw` archives.
+**krill** is a Kubernetes deployment for running multiple small [OpenClaw](https://github.com/openclaw/openclaw) agent instances in parallel, each working on a different project. Krill pods share a central API server and carry persistent context between sessions using the [`.claw` archive format](https://github.com/Emma-Leonhart/claw.py).
 
 > Like krill in the ocean — small, numerous, and collectively capable of feeding something much larger.
 
 ---
 
-## What is a krill pod?
+## The three pieces
 
-Each krill pod is:
-- An **Ubuntu 24.04** container running **OpenClaw** (Node.js 22)
-- Connected to a **central API server** for model routing
-- Backed by a **persistent volume** for workspace memory
-- Able to **import and export context** as `.claw` archives using `claw.py`
+| Piece | What it is |
+|---|---|
+| **[OpenClaw](https://github.com/openclaw/openclaw)** | The AI agent runtime. Each krill pod runs one OpenClaw instance. |
+| **krill** (this repo) | The Kubernetes infrastructure for running many OpenClaw pods at once, one per project. |
+| **[claw.py](https://github.com/Emma-Leonhart/claw.py)** | A separate tool for packaging agent context into portable `.claw` archives. Included here as a git submodule. |
+
+### What is a `.claw` file?
+
+A `.claw` file is a portable zip archive that captures an OpenClaw agent's working context — conversation traces, scratch notes, memory, and session state. It can be imported into a pod at startup to resume a previous session, and exported from a running pod to save progress.
+
+This is how krill persists agent context across pod restarts and transfers context between pods.
 
 ---
 
@@ -29,8 +35,8 @@ Each krill pod is:
               │                    │                    │
          ┌────▼────┐          ┌────▼────┐          ┌────▼────┐
          │ krill-0 │          │ krill-1 │          │ krill-2 │
-         │ project │          │ project │          │ project │
-         │    A    │          │    B    │          │    C    │
+         │OpenClaw │          │OpenClaw │          │OpenClaw │
+         │project A│          │project B│          │project C│
          └────┬────┘          └────┬────┘          └────┬────┘
               │                    │                    │
          ┌────▼────┐          ┌────▼────┐          ┌────▼────┐
@@ -39,7 +45,7 @@ Each krill pod is:
          └─────────┘          └─────────┘          └─────────┘
 ```
 
-Each pod exposes the OpenClaw WebSocket gateway on port **18789**. Pods are assigned stable DNS names via a headless Service:
+Each pod runs the OpenClaw WebSocket gateway on port **18789** and gets a stable DNS name via a headless Service:
 
 ```
 krill-0.krill.krill.svc.cluster.local:18789
@@ -52,15 +58,16 @@ krill-1.krill.krill.svc.cluster.local:18789
 
 ```
 krill/
-├── Dockerfile                  # Ubuntu + Node.js 22 + OpenClaw base image
-├── claw.py                     # Context archive utility (.claw export/import)
+├── Dockerfile                  # Ubuntu 24.04 + Node.js 22 + OpenClaw + claw.py
+├── claw.py/                    # git submodule — the .claw archive tool
+│   └── claw.py                 #   (from github.com/Emma-Leonhart/claw.py)
 ├── config/
 │   └── openclaw.json.tpl       # OpenClaw config template (env-substituted at runtime)
 ├── scripts/
 │   └── entrypoint.sh           # Container entrypoint
 ├── k8s/
 │   ├── namespace.yaml          # krill namespace
-│   ├── secret.yaml             # API key secret (fill before applying)
+│   ├── secret.example.yaml     # API key secret template (copy → secret.yaml, fill, apply)
 │   ├── configmap.yaml          # Shared pod configuration
 │   ├── statefulset.yaml        # Krill StatefulSet (one PVC per pod)
 │   └── service.yaml            # Headless service for stable pod DNS
@@ -71,40 +78,40 @@ krill/
 
 ## Quick start
 
-### 1. Build the image
+### 1. Clone with submodules
+
+```bash
+git clone --recurse-submodules https://github.com/YOUR_ORG/krill.git
+# or if already cloned:
+git submodule update --init
+```
+
+### 2. Build the image
 
 ```bash
 docker build -t krill:latest .
 ```
 
-### 2. Configure your API key
-
-Edit `k8s/secret.yaml` and replace `REPLACE_WITH_YOUR_API_KEY` with your actual key, then apply:
+### 3. Configure your API key
 
 ```bash
+cp k8s/secret.example.yaml k8s/secret.yaml
+# Edit k8s/secret.yaml — fill in your API key
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/secret.yaml -n krill
 ```
 
-Or create the secret directly:
+### 4. Set the API server URL
 
-```bash
-kubectl create secret generic krill-api-secret \
-  --from-literal=api-key=YOUR_KEY_HERE \
-  -n krill
-```
+Edit `k8s/configmap.yaml` and set `OPENCLAW_API_BASE` to your cluster-internal API server URL.
 
-### 3. Configure the API server
-
-Edit `k8s/configmap.yaml` to set `OPENCLAW_API_BASE` to your API server's cluster-internal URL. If you're routing directly to Anthropic, set it to `https://api.anthropic.com`.
-
-### 4. Deploy
+### 5. Deploy
 
 ```bash
 kubectl apply -f k8s/ -n krill
 ```
 
-### 5. Scale up
+### 6. Scale
 
 ```bash
 # Run 3 krill pods (krill-0, krill-1, krill-2)
@@ -113,26 +120,26 @@ kubectl scale statefulset krill --replicas=3 -n krill
 
 ---
 
-## Context archives (.claw files)
+## Context lifecycle with `.claw` files
 
-Krill uses `.claw` archives to carry agent context between sessions. A `.claw` file is a portable zip containing conversation traces, scratch notes, and working memory.
+### Inject context at pod startup
 
-**Inject context at pod startup:**
+Drop an `init.claw` file into the pod's `/krill/context/` volume before it starts. The entrypoint imports it automatically into the OpenClaw workspace.
 
-Place an `init.claw` file into the pod's `/krill/context/` volume before it starts. The entrypoint will import it automatically.
-
-**Export context from a running pod:**
+### Export context from a running pod
 
 ```bash
 kubectl exec krill-0 -n krill -- \
   python3 /usr/local/bin/claw.py export /root/.openclaw/workspace /krill/context/session.claw
 ```
 
-**Inspect a .claw archive locally:**
+### Inspect a `.claw` archive locally
 
 ```bash
-python3 claw.py info my_session.claw
+python3 claw.py/claw.py info my_session.claw
 ```
+
+See the [claw.py repo](https://github.com/Emma-Leonhart/claw.py) for full documentation on the archive format.
 
 ---
 

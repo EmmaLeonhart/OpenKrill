@@ -28,8 +28,8 @@ RUN npm install -g openclaw@latest
 # Create openclaw config directory
 RUN mkdir -p /root/.openclaw/workspace
 
-# Copy claw.py context archive utility into the image
-COPY claw.py /usr/local/bin/claw.py
+# Copy claw.py context archive utility into the image (from the claw.py submodule)
+COPY claw.py/claw.py /usr/local/bin/claw.py
 RUN chmod +x /usr/local/bin/claw.py
 
 # Copy entrypoint script

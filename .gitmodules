@@ -1,0 +1,3 @@
+[submodule "claw.py"]
+	path = claw.py
+	url = https://github.com/Emma-Leonhart/claw.py.git
