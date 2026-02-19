@@ -1,0 +1,98 @@
+# StatefulSet for krill pods.
+# Each pod gets a stable identity and its own persistent workspace volume.
+#
+# To deploy multiple krill instances for different projects, either:
+#   a) Scale this StatefulSet (krill-0, krill-1, krill-2 ...)
+#   b) Copy and rename for per-project StatefulSets (recommended for distinct configs)
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: krill
+  namespace: krill
+  labels:
+    app.kubernetes.io/name: krill
+    app.kubernetes.io/component: agent
+spec:
+  serviceName: krill
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: krill
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: krill
+        app.kubernetes.io/component: agent
+    spec:
+      containers:
+        - name: krill
+          image: krill:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: gateway
+              containerPort: 18789
+              protocol: TCP
+          env:
+            # Pod identity — available inside the container as $KRILL_NAME
+            - name: KRILL_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # Shared config from ConfigMap
+            - name: OPENCLAW_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: krill-config
+                  key: OPENCLAW_MODEL
+            - name: OPENCLAW_API_BASE
+              valueFrom:
+                configMapKeyRef:
+                  name: krill-config
+                  key: OPENCLAW_API_BASE
+            # API key from Secret
+            - name: OPENCLAW_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: krill-api-secret
+                  key: api-key
+          volumeMounts:
+            # Persistent workspace — survives pod restarts
+            - name: workspace
+              mountPath: /root/.openclaw/workspace
+            # Context volume — mount a PVC or ConfigMap here to inject
+            # an init.claw archive or AGENTS.md at startup
+            - name: context
+              mountPath: /krill/context
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          livenessProbe:
+            tcpSocket:
+              port: 18789
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 18789
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+      volumes:
+        # Shared context volume — used to inject .claw archives and AGENTS.md.
+        # Replace with a real PVC if you need persistent context injection.
+        - name: context
+          emptyDir: {}
+
+  volumeClaimTemplates:
+    # One PVC per pod — workspace persists across restarts
+    - metadata:
+        name: workspace
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

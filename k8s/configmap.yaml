@@ -1,0 +1,22 @@
+# Shared configuration for all krill pods.
+# Override per-pod values by patching or using separate ConfigMaps.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: krill-config
+  namespace: krill
+  labels:
+    app.kubernetes.io/name: krill
+data:
+  # AI model to use. Uses LiteLLM-style routing (provider/model-name).
+  # Examples:
+  #   anthropic/claude-opus-4-6
+  #   openai/gpt-4o
+  #   openai/local-model  (when using a local proxy as api-base)
+  OPENCLAW_MODEL: "anthropic/claude-opus-4-6"
+
+  # Base URL of the API server all krill pods route requests through.
+  # If you run a central LiteLLM / OpenAI-compatible proxy in your cluster,
+  # set this to its internal service URL, e.g. http://krill-api-server:8080
+  # For direct Anthropic access: https://api.anthropic.com
+  OPENCLAW_API_BASE: "http://krill-api-server:8080"
