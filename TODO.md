@@ -12,8 +12,8 @@ The Dockerfile does `npm install -g openclaw@latest`. If this package doesn't
 exist on npm (or has a different name), the Docker build fails and nothing else
 matters. Before anything else:
 
-- [ ] Check that `openclaw` is published on npm and has a `gateway` subcommand
-- [ ] Confirm the exact flag syntax: `openclaw gateway --port 18789` (or adjust
+- [x] Check that `openclaw` is published on npm and has a `gateway` subcommand
+- [x] Confirm the exact flag syntax: `openclaw gateway --port 18789` (or adjust
       `scripts/entrypoint.sh` line 42 if the flag differs)
 
 ### 2. Create `k8s/secret.yaml`
@@ -23,6 +23,8 @@ The file is gitignored and must be created locally before deploying.
 cp k8s/secret.example.yaml k8s/secret.yaml
 # Edit k8s/secret.yaml — replace REPLACE_WITH_YOUR_API_KEY with your real key
 ```
+
+- [x] Created `k8s/secret.yaml` (with placeholder)
 
 ### 3. Decide on API routing and fix `configmap.yaml`
 `OPENCLAW_API_BASE` currently points at `http://krill-api-server:8080`, which
@@ -34,7 +36,7 @@ doesn't exist yet. Two options:
   LiteLLM Deployment + ClusterIP Service named `krill-api-server`. Required
   for the full intended architecture (see CLAUDE.md "things to do next").
 
-- [ ] Pick an option and update `k8s/configmap.yaml` accordingly
+- [x] Pick an option and update `k8s/configmap.yaml` accordingly (Picked Option A)
 
 ### 4. Have a Kubernetes cluster running
 Nothing in this repo sets one up. Pick a local option:
@@ -54,31 +56,8 @@ The API key is injected as `OPENCLAW_API_KEY` into the container environment
 but is **never written into `openclaw.json`**. If OpenClaw reads its key from
 the config file rather than the environment, it will fail to authenticate.
 
-Current template (`config/openclaw.json.tpl`):
-```json
-{
-  "agent": {
-    "model": "${OPENCLAW_MODEL}",
-    "apiBase": "${OPENCLAW_API_BASE}",
-    "workspace": "/root/.openclaw/workspace"
-  }
-}
-```
-
-Likely needs to become:
-```json
-{
-  "agent": {
-    "model": "${OPENCLAW_MODEL}",
-    "apiBase": "${OPENCLAW_API_BASE}",
-    "apiKey": "${OPENCLAW_API_KEY}",
-    "workspace": "/root/.openclaw/workspace"
-  }
-}
-```
-
-- [ ] Check OpenClaw docs/source for the correct config key name
-- [ ] Update `config/openclaw.json.tpl` accordingly
+- [x] Check OpenClaw docs/source for the correct config key name
+- [x] Update `config/openclaw.json.tpl` accordingly
 
 ---
 

@@ -19,4 +19,4 @@ data:
   # If you run a central LiteLLM / OpenAI-compatible proxy in your cluster,
   # set this to its internal service URL, e.g. http://krill-api-server:8080
   # For direct Anthropic access: https://api.anthropic.com
-  OPENCLAW_API_BASE: "http://krill-api-server:8080"
+  OPENCLAW_API_BASE: "https://api.anthropic.com"
